@@ -1,0 +1,85 @@
+version: '3.8'
+
+networks:
+  my-network:
+    driver: bridge
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - my-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Advertise only the internal hostname for Docker containers:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - my-network
+
+  postgres-local:
+    image: postgres:16
+    container_name: local-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345678
+      POSTGRES_DB: testdb
+    # Start Postgres with logical decoding settings:
+    command: postgres -c wal_level=logical -c max_wal_senders=4 -c max_replication_slots=4
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - my-network
+
+  kafka-connect:
+    image: quay.io/debezium/connect:latest
+    container_name: kafka-connect
+    depends_on:
+      - kafka
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: debezium_config
+      OFFSET_STORAGE_TOPIC: debezium_offsets
+      STATUS_STORAGE_TOPIC: debezium_status
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      PLUGIN_PATH: /kafka/connect
+    ports:
+      - "8083:8083"
+    networks:
+      - my-network
+
+  csharp-consumer:
+    image: cloud-sync-consumer
+    container_name: csharp-consumer
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CLOUD_DB_CONNECTION=Host=my-cloud-db.cpq4c26sgkao.us-east-2.rds.amazonaws.com;Port=5432;Username=postgres;Password=MyPassword123;Database=cloud_db
+    networks:
+      - my-network
+
+volumes:
+  pgdata:
