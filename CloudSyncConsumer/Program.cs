@@ -1,13 +1,34 @@
-﻿using Confluent.Kafka;
+﻿using System;
+using Confluent.Kafka;
 using Newtonsoft.Json.Linq; // For parsing JSON
 using Npgsql; // For cloud DB
+using Prometheus;
+using System.Threading;
 
 namespace CloudSyncConsumer
 {
     class Program
     {
+         // Define counters at the class level so you can increment them inside the loop
+        private static readonly Counter UpsertCounter = Metrics.CreateCounter(
+            "cloud_db_upserts_total",
+            "Number of upserts performed on the cloud database."
+        );
+
+        private static readonly Counter DeleteCounter = Metrics.CreateCounter(
+            "cloud_db_deletes_total",
+            "Number of deletes performed on the cloud database."
+        );
+
+        // (Optional) measure latency for each write
+        private static readonly Histogram WriteLatency = Metrics.CreateHistogram(
+            "cloud_db_write_latency_seconds",
+            "Latency (in seconds) for upserts/deletes."
+        );
         static void Main(string[] args)
         {
+            var metricServer = new MetricServer(port: 1234);
+            metricServer.Start();
             // 1. Kafka Consumer Configuration
             var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "kafka:9092";
             Console.WriteLine("Using BootstrapServers: " + bootstrapServers);
@@ -39,10 +60,25 @@ namespace CloudSyncConsumer
                     var cr = consumer.Consume(); // blocking call
                     var messageValue = cr.Message.Value;
                     Console.WriteLine("Message received: " + messageValue);
+                    if (string.IsNullOrEmpty(messageValue))
+                    {
+                        Console.WriteLine("Received an empty or null message. Skipping...");
+                        continue; // Skip processing this message
+                    }
 
                     // 5. Parse Debezium JSON
                     Console.WriteLine("debug1");
-                    var json = JObject.Parse(messageValue);
+                    //var json = JObject.Parse(messageValue);
+                    JObject json;
+                        try
+                        {
+                            json = JObject.Parse(messageValue);
+                        }
+                        catch (Exception parseEx)
+                        {
+                            Console.WriteLine($"JSON parse error: {parseEx.Message}. Skipping message...");
+                            continue; // Skip processing this malformed message
+                        }
                     Console.WriteLine("debug2");
                     // var payload = json["payload"];
                     // Console.WriteLine("debug3");
