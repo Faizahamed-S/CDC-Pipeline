@@ -11,6 +11,7 @@
     <PackageReference Include="Confluent.Kafka" Version="2.8.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Npgsql" Version="9.0.2" />
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
   </ItemGroup>
 
 </Project>
