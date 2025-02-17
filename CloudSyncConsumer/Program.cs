@@ -25,6 +25,10 @@ namespace CloudSyncConsumer
             "cloud_db_write_latency_seconds",
             "Latency (in seconds) for upserts/deletes."
         );
+        private static readonly Histogram CdcLatencyHistogram = Metrics.CreateHistogram(
+            "cdc_latency_seconds",
+            "End-to-end latency from local DB commit to cloud DB update."
+        );
         static void Main(string[] args)
         {
             var metricServer = new MetricServer(port: 1234);
@@ -39,19 +43,19 @@ namespace CloudSyncConsumer
                 GroupId = "my-sync-group" + Guid.NewGuid().ToString(),
                 AutoOffsetReset = AutoOffsetReset.Earliest,
             };
-
-            // 2. Cloud DB Connection String
-            var cloudDbConnectionString = Environment.GetEnvironmentVariable("CLOUD_DB_CONNECTION")
-                ?? "Host=my-cloud-db.cpq4c26sgkao.us-east-2.rds.amazonaws.com;Port=5432;Username=postgres;Password=MyPassword123;Database=cloud_db";
-            Console.WriteLine("Using cloud DB connection string: " + cloudDbConnectionString);
-
-            // 3. Kafka Topic
+             // 3. Kafka Topic
             const string topicName = "local-postgres.public.mytable";
 
             // 4. Start Consumer
             using var consumer = new ConsumerBuilder<Ignore, string>(consumerConfig).Build();
             consumer.Subscribe(topicName);
             Console.WriteLine($"Subscribed to {topicName}. Waiting for messages...");
+
+            // 2. Cloud DB Connection String
+            var cloudDbConnectionString = Environment.GetEnvironmentVariable("CLOUD_DB_CONNECTION")
+                ?? "Host=my-cloud-db.cpq4c26sgkao.us-east-2.rds.amazonaws.com;Port=5432;Username=postgres;Password=MyPassword123;Database=cloud_db";
+            Console.WriteLine("Using cloud DB connection string: " + cloudDbConnectionString);
+
 
             try
             {
@@ -97,6 +101,33 @@ namespace CloudSyncConsumer
                         Console.WriteLine("No op in message, skipping...");
                         continue;
                     }
+                    // AFTER you parse 'json' and have 'op'
+                    var source = json["source"];
+                    if (source != null)
+                    {
+                        try
+                        {
+                            long sourceTsMs = (long)source["ts_ms"]; // local DB commit time in ms
+                            var localDbCommitTime = DateTimeOffset.FromUnixTimeMilliseconds(sourceTsMs);
+                            var now = DateTimeOffset.UtcNow;
+                            var latency = now - localDbCommitTime;
+                            double latencySeconds = latency.TotalSeconds;
+
+                            // Observe the latency in our histogram
+                            CdcLatencyHistogram.Observe(latencySeconds);
+
+                            Console.WriteLine($"CDC latency: {latencySeconds:F3} seconds");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to parse or record CDC latency: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("No 'source' object in the event, skipping latency measure...");
+                    }
+
                     
                     var after = json["after"];
                     var before = json["before"];
