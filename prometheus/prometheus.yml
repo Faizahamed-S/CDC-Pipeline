@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s  # How often to scrape metrics
+
+scrape_configs:
+  # Scrape the Prometheus server itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['prometheus:9090']
+      
+  - job_name: 'csharp-consumer'
+    static_configs:
+      - targets: ['csharp-consumer:1234']
+
