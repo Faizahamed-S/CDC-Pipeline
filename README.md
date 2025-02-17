@@ -30,7 +30,21 @@ This project demonstrates a **Change Data Capture (CDC)** pipeline using **Debez
 ---
 
 ## 3. Project Structure
-Project_SYNC/ (example name) ├── CloudSyncConsumer/ │ ├── Program.cs │ ├── CloudSyncConsumer.csproj │ ├── Dockerfile │ └── ... ├── Kafka/ │ ├── docker-compose.yml (or combined in a single compose) │ └── connector-config.json ├── prometheus/ │ └── prometheus.yml (optional) └── ...
+      
+      Project_SYNC/                # Root folder for the entire CDC project
+      ├── CloudSyncConsumer/       # C# Consumer code
+      │   ├── Program.cs           # Main consumer logic
+      │   ├── CloudSyncConsumer.csproj
+      │   ├── Dockerfile           # Builds the C# consumer image
+      │   └── ...                 # Other .cs files or resources
+      ├── Kafka/                   # Kafka & Debezium configurations
+      │   ├── docker-compose.yml   # Defines Kafka, Zookeeper, Debezium Connect, etc.
+      │   └── connector-config.json # Debezium connector settings for Postgres
+      ├── prometheus/              # (Optional) Prometheus configuration for metrics
+      │   └── prometheus.yml
+      └── ...                      # Additional files, e.g., README.md, .env, etc.
+
+
 
 
 - **CloudSyncConsumer**: The C# consumer code + Dockerfile.
